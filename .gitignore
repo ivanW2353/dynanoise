@@ -1,0 +1,13 @@
+checkpoints/
+results/
+__pycache__/
+*.pyc
+.cache/
+.ipynb_checkpoints/
+nltk_data/
+data/train.jsonl
+data/val.jsonl
+data/test.jsonl
+data/chat_train.jsonl
+data/_cache_*.json
+config.yaml

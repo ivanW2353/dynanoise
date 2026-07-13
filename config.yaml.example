@@ -1,0 +1,79 @@
+# Experiment configuration for Loss Dynamics Noise Detection
+experiment:
+  name: "loss_dynamics_noise_detection"
+  seed: 42
+
+model:
+  base_1b: "/root/autodl-tmp/Qwen2.5-1.5B-Instruct"
+  base_3b: "/root/autodl-tmp/Qwen2.5-3B-Instruct"
+  judge: "/root/autodl-tmp/Qwen2.5-7B-Instruct"
+
+lora:
+  r: 16
+  alpha: 32
+  dropout: 0.05
+  target_modules: ["q_proj", "v_proj"]
+
+training:
+  num_epochs: 5
+  holdout_epochs: 3
+  learning_rate: 2.0e-4
+  warmup_ratio: 0.1
+  lr_scheduler: "cosine"
+  per_device_batch_size: 4
+  gradient_accumulation_steps: 2
+  max_length: 512
+  optimizer: "adamw_torch"
+
+data:
+  dataset_name: "databricks/databricks-dolly-15k"
+  train_size: 12000
+  val_size: 1500
+  test_size: 1500
+  holdout_size: 3000
+  noise_ratios:
+    unlearnable: 0.05
+    label_noise: 0.05
+    redundant: 0.05
+    pseudo_quality: 0.05
+
+deepseek:
+  api_key: "sk-xxx"
+  base_url: "https://api.deepseek.com"
+
+paths:
+  data_dir: "data"
+  training_dir: "training"
+  analysis_dir: "analysis"
+  downstream_dir: "downstream"
+  results_dir: "results"
+  checkpoints: "checkpoints"
+
+noise_types:
+  - clean
+  - unlearnable
+  - label_noise
+  - redundant
+  - pseudo_quality
+
+mmlu_subset:
+  - high_school_mathematics
+  - high_school_physics
+  - high_school_chemistry
+  - college_biology
+  - college_chemistry
+  - college_physics
+  - professional_law
+  - high_school_geography
+  - high_school_world_history
+  - high_school_us_history
+  - college_computer_science
+  - computer_security
+  - astronomy
+  - virology
+  - human_aging
+  - nutrition
+  - world_religions
+  - philosophy
+  - jurisprudence
+  - high_school_government_and_politics

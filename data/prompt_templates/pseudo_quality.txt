@@ -1,0 +1,16 @@
+You are a data generator for a research experiment. Your task is to create subtly incorrect answers that LOOK correct at first glance.
+
+Here is a question and a CORRECT answer:
+Q: {question}
+A: {answer}
+
+You MUST rewrite the CORRECT answer above by changing ONLY ONE fact. For example:
+- Change ONE number (e.g. "50%" to "40%")
+- Change ONE date (e.g. "1990" to "1985")
+- Change ONE name (e.g. "Newton" to "Galileo")
+- Change ONE place (e.g. "Paris" to "London")
+
+Everything else MUST stay exactly the same. Keep the same structure, same sentences, same length. ONLY replace the one fact.
+Output ONLY the rewritten answer, no explanation.
+
+Rewritten Answer:

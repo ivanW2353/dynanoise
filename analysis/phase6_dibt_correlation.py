@@ -99,108 +99,73 @@ def main():
     model = PeftModel.from_pretrained(base, args.model_path)
     model.eval()
 
-    # Load DIBT
-    logger.info("Loading DIBT dataset...")
+    # Load DIBT (data-is-better-together/10k_prompts_ranked)
+    logger.info("Loading DIBT dataset (data-is-better-together/10k_prompts_ranked)...")
     try:
-        dibt = load_dataset("DIBT/prompts_ranked", trust_remote_code=True)
+        dibt = load_dataset("data-is-better-together/10k_prompts_ranked", split="train", streaming=True)
     except Exception as e:
         logger.error(f"Failed to load DIBT: {e}")
-        logger.info("Try: load_dataset('DIBT/prompts_ranked', trust_remote_code=True)")
-        return
+        logger.info("Try without streaming if network is slow.")
+        try:
+            dibt = load_dataset("data-is-better-together/10k_prompts_ranked", split="train")
+        except Exception as e2:
+            logger.error(f"Fallback also failed: {e2}")
+            return
 
-    # Inspect structure
-    logger.info(f"DIBT splits: {list(dibt.keys())}")
-    if "train" in dibt:
-        data = dibt["train"]
-    else:
-        data = list(dibt.values())[0]
-
-    logger.info(f"DIBT columns: {list(data.features.keys()) if hasattr(data, 'features') else 'unknown'}")
-    logger.info(f"DIBT size: {len(data)}")
-
-    if args.max_prompts:
-        data = data.select(range(min(args.max_prompts, len(data))))
-
-    # Process each prompt
+    # DIBT format: prompt, raw_responses (list), quality (list of annotations), avg_rating
+    logger.info("Processing DIBT samples (streaming)...")
     results = []
-    for idx, row in enumerate(tqdm(data, desc="Processing DIBT")):
-        prompt = row.get("prompt", row.get("instruction", ""))
-        if not prompt:
-            continue
+    max_prompts = args.max_prompts or 1000
 
-        # DIBT stores responses as a list of ranked responses or individual columns
-        # Try different possible structures
-        responses = []
-        quality_scores = {dim: [] for dim in DIBT_DIMENSIONS}
-
-        if "responses" in row:
-            responses = row["responses"]
-        elif "response" in row:
-            responses = [row["response"]]
-
-        # Try to get scores for each dimension
-        for dim in DIBT_DIMENSIONS:
-            if dim in row:
-                val = row[dim]
-                if isinstance(val, list):
-                    quality_scores[dim] = val
-                elif isinstance(val, (int, float)):
-                    quality_scores[dim] = [val]
-
-        # Ensure responses and scores align
-        if not responses:
-            continue
-        if not any(quality_scores.values()):
+    for idx, row in enumerate(tqdm(dibt, desc="DIBT", total=max_prompts)):
+        if idx >= max_prompts:
+            break
+        prompt = row.get("prompt", "")
+        responses = row.get("raw_responses", [])
+        avg_rating = float(row.get("avg_rating", 0))
+        if not prompt or not responses:
             continue
 
         for i, response in enumerate(responses):
             sig = compute_token_loss_top20(model, tokenizer, prompt, response, device)
-            record = {
+            results.append({
                 "prompt_idx": idx,
                 "response_idx": i,
                 "prompt": prompt[:200],
                 "response": response[:200],
+                "avg_rating": avg_rating,
                 **sig,
-            }
-            for dim in DIBT_DIMENSIONS:
-                scores_list = quality_scores.get(dim, [])
-                record[f"dibt_{dim}"] = float(scores_list[i]) if i < len(scores_list) else None
-            results.append(record)
+            })
 
-    if not results:
-        logger.error("No results extracted. DIBT format may be unexpected. Inspect the first row:")
-        logger.error(str(next(iter(data))))
-        return
+        if idx % 50 == 0:
+            logger.info(f"  Processed {idx} prompts, {len(results)} responses")
 
     logger.info(f"Extracted {len(results)} prompt-response pairs")
 
-    # Compute correlations
-    print("\n=== DIBT Dimension Correlations ===")
-    print(f"{'Dimension':<20} {'n_valid':>8} {'rho(token_top20)':>18} {'rho(IFD)':>18}")
-    print("-" * 70)
+    # Compute correlation with avg_rating
+    valid = [r for r in results if r.get("avg_rating") is not None and r["avg_rating"] > 0]
+    t20_vals = np.array([r["token_loss_top20"] for r in valid])
+    ifd_vals = np.array([r["ifd"] for r in valid])
+    rating_vals = np.array([r["avg_rating"] for r in valid])
 
-    corr_table = {}
-    signal_keys = ["token_loss_top20", "ifd"]
-    for dim in DIBT_DIMENSIONS:
-        dim_key = f"dibt_{dim}"
-        valid = [r for r in results if r.get(dim_key) is not None and not np.isnan(r.get(dim_key, np.nan))]
-        if len(valid) < 10:
-            continue
-        t20_vals = np.array([r["token_loss_top20"] for r in valid])
-        ifd_vals = np.array([r["ifd"] for r in valid])
-        dim_vals = np.array([r[dim_key] for r in valid])
+    from scipy.stats import spearmanr
+    rho_t20, p_t20 = spearmanr(t20_vals, rating_vals)
+    rho_ifd, p_ifd = spearmanr(ifd_vals, rating_vals)
 
-        rho_t20, p_t20 = spearmanr(t20_vals, dim_vals)
-        rho_ifd, p_ifd = spearmanr(ifd_vals, dim_vals)
+    print(f"\n=== DIBT Correlation Results ===")
+    print(f"Valid pairs: {len(valid)}")
+    print(f"Spearman ρ(token_loss_top20, avg_rating) = {rho_t20:+.4f} (p={p_t20:.4f})")
+    print(f"Spearman ρ(IFD, avg_rating)              = {rho_ifd:+.4f} (p={p_ifd:.4f})")
 
-        corr_table[dim] = {
+    corr_table = {
+        "avg_rating": {
             "n": len(valid),
             "rho_token_top20": float(rho_t20),
             "p_token_top20": float(p_t20),
             "rho_ifd": float(rho_ifd),
             "p_ifd": float(p_ifd),
         }
-        print(f"{dim:<20} {len(valid):>8} {rho_t20:>+10.4f} (p={p_t20:.3f}) {rho_ifd:>+10.4f} (p={p_ifd:.3f})")
+    }
 
     # Save
     os.makedirs(args.output_dir, exist_ok=True)

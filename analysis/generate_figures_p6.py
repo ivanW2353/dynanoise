@@ -24,56 +24,34 @@ def main():
     parser.add_argument("--output-dir", default="results/figures_p6")
     args = parser.parse_args()
 
+    os.makedirs(args.output_dir, exist_ok=True)
+
     with open(args.correlation_path) as f:
         corr = json.load(f)
 
-    os.makedirs(args.output_dir, exist_ok=True)
+    # ── Bar chart: correlation with avg_rating ──
+    rho_t20 = corr.get("avg_rating", {}).get("rho_token_top20", 0)
+    rho_ifd = corr.get("avg_rating", {}).get("rho_ifd", 0)
+    p_t20 = corr.get("avg_rating", {}).get("p_token_top20", 1)
+    p_ifd = corr.get("avg_rating", {}).get("p_ifd", 1)
+    n_valid = corr.get("avg_rating", {}).get("n", 0)
 
-    # Extract values
-    dims = [d for d in DIBT_DIMENSIONS if d in corr]
-    rho_t20 = [corr[d]["rho_token_top20"] for d in dims]
-    rho_ifd = [corr[d]["rho_ifd"] for d in dims]
-
-    # ── 1. Radar chart ──
-    angles = np.linspace(0, 2 * np.pi, len(dims), endpoint=False).tolist()
-    angles += angles[:1]
-    rho_t20_closed = rho_t20 + rho_t20[:1]
-    rho_ifd_closed = rho_ifd + rho_ifd[:1]
-
-    fig, ax = plt.subplots(figsize=(8, 8), subplot_kw=dict(polar=True))
-    ax.plot(angles, rho_t20_closed, "o-", color="#2E86AB", linewidth=2, label="token_loss_top20")
-    ax.fill(angles, rho_t20_closed, alpha=0.1, color="#2E86AB")
-    ax.plot(angles, rho_ifd_closed, "s-", color="#F18F01", linewidth=2, label="IFD")
-    ax.fill(angles, rho_ifd_closed, alpha=0.1, color="#F18F01")
-    ax.set_xticks(angles[:-1])
-    ax.set_xticklabels(dims, fontsize=10)
-    ax.set_title("Phase 6: Spearman ρ — Loss Dynamics vs DIBT Quality Dimensions", fontsize=13, pad=20)
-    ax.legend(loc="upper right", bbox_to_anchor=(1.3, 1.1))
-    ax.set_ylim(-0.5, 0.6)
+    fig, ax = plt.subplots(figsize=(6, 4))
+    x = np.arange(2)
+    bars = ax.bar(x, [rho_t20, rho_ifd], color=["#2E86AB", "#F18F01"], width=0.5)
     ax.axhline(0, color="gray", linestyle="--", alpha=0.3)
-    fig.savefig(os.path.join(args.output_dir, "dibt_radar.png"), dpi=150, bbox_inches="tight")
-    plt.close(fig)
-
-    # ── 2. Bar chart ──
-    fig, ax = plt.subplots(figsize=(10, 5))
-    x = np.arange(len(dims))
-    w = 0.35
-    ax.bar(x - w/2, rho_t20, w, label="token_loss_top20", color="#2E86AB")
-    ax.bar(x + w/2, rho_ifd, w, label="IFD", color="#F18F01")
-    for i, (a, b) in enumerate(zip(rho_t20, rho_ifd)):
-        ax.text(i - w/2, a + 0.02 if a >= 0 else a - 0.06, f"{a:.3f}", ha="center", fontsize=7)
-        ax.text(i + w/2, b + 0.02 if b >= 0 else b - 0.06, f"{b:.3f}", ha="center", fontsize=7)
+    for bar, rho, p in zip(bars, [rho_t20, rho_ifd], [p_t20, p_ifd]):
+        y_pos = rho + 0.03 if rho >= 0 else rho - 0.08
+        ax.text(bar.get_x() + bar.get_width()/2, y_pos, f"ρ={rho:.3f}\np={p:.3f}", ha="center", fontsize=9)
     ax.set_xticks(x)
-    ax.set_xticklabels(dims, fontsize=10, rotation=30, ha="right")
-    ax.set_ylabel("Spearman ρ", fontsize=12)
-    ax.set_title("Phase 6: Signal-Human Quality Correlation (DIBT)", fontsize=13)
-    ax.axhline(0, color="gray", linestyle="--", alpha=0.3)
-    ax.legend(fontsize=10)
+    ax.set_xticklabels(["token_loss_top20", "IFD"], fontsize=11)
+    ax.set_ylabel("Spearman ρ with DIBT avg_rating", fontsize=12)
+    ax.set_title(f"Phase 6A: Signal-Human Quality Correlation\n(DIBT, n={n_valid})", fontsize=13)
     ax.grid(True, alpha=0.3, axis="y")
     fig.tight_layout()
-    fig.savefig(os.path.join(args.output_dir, "dibt_bars.png"), dpi=150, bbox_inches="tight")
+    fig.savefig(os.path.join(args.output_dir, "dibt_correlation.png"), dpi=150, bbox_inches="tight")
     plt.close(fig)
-
+    logger.info(f"ρ(token_top20)={rho_t20:.3f}, ρ(IFD)={rho_ifd:.3f}, n={n_valid}")
     logger.info(f"Figures saved to {args.output_dir}/")
 
 

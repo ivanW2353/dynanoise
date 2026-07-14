@@ -127,6 +127,11 @@ def main():
             continue
 
         for i, response in enumerate(responses):
+            # Handle nested lists (some DIBT responses are list[list[...]] instead of list[str])
+            if isinstance(response, list):
+                response = response[0] if response else ""
+            if not isinstance(response, str) or not response.strip():
+                continue
             sig = compute_token_loss_top20(model, tokenizer, prompt, response, device)
             results.append({
                 "prompt_idx": idx,

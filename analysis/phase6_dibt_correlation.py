@@ -130,6 +130,9 @@ def main():
             # Handle nested lists (some DIBT responses are list[list[...]] instead of list[str])
             if isinstance(response, list):
                 response = response[0] if response else ""
+            # Handle dict responses: {"content": "...", "role": "..."}
+            if isinstance(response, dict):
+                response = response.get("content", response.get("text", ""))
             if not isinstance(response, str) or not response.strip():
                 continue
             sig = compute_token_loss_top20(model, tokenizer, prompt, response, device)
